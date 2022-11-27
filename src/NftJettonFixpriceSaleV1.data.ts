@@ -14,14 +14,16 @@ export type NftJettonFixpriceSaleV1Data = {
   royaltyAddress: Address
   royaltyAmount: BN
   canDeployByExternal?: boolean,
-  jettonPrices: Map<Address, BN>
+  jettonPrices: Map<Address, { fullPrice: BN, marketplaceFee: BN, royaltyAmount: BN }>
 }
 
-function buildJettonPricesDict(jettons: Map<Address, BN>) {
+export function buildJettonPricesDict(jettons: Map<Address, { fullPrice: BN, marketplaceFee: BN, royaltyAmount: BN }>) {
   // Transform jetton address to only hash
   const transformedJettons = new Map([...jettons.entries()].map(([address, amount]) => [new BN(address.hash).toString(10), amount]));
-  const jettonsDict = serializeDict(transformedJettons, 256, (coins, cell) => {
-    cell.bits.writeCoins(coins);
+  const jettonsDict = serializeDict(transformedJettons, 256, (prices, cell) => {
+    cell.bits.writeCoins(prices.fullPrice);
+    cell.bits.writeCoins(prices.marketplaceFee);
+    cell.bits.writeCoins(prices.royaltyAmount);
   });
   return jettonsDict;
 }

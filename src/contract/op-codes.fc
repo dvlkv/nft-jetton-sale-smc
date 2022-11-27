@@ -22,3 +22,5 @@ int op::ownership_proof_bounced() asm "0xc18e86d2 PUSHINT";
 int op::destroy() asm "0x1f04537a PUSHINT";
 int op::revoke() asm "0x6f89f5e3 PUSHINT";
 int op::take_excess() asm "0xd136d3b3 PUSHINT";
+
+int jetton::transfer_notification() asm "0x7362d09c PUSHINT";

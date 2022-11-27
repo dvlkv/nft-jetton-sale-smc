@@ -32,6 +32,14 @@ _ load_fees(cell fees_cell) inline {
     );
 }
 
+_ load_jetton_prices(slice prices_slice) inline {
+    return (
+        prices_slice~load_coins(), ;; full price
+        prices_slice~load_coins(), ;; marketplace fee
+        prices_slice~load_coins()  ;; royalty amount
+    );
+}
+
 () save_data(int is_complete, int created_at, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell, cell jettons_dict) impure inline {
     set_data(
         begin_cell()
@@ -59,14 +67,54 @@ _ load_fees(cell fees_cell) inline {
     send_raw_message(msg, 1);
 }
 
+() send_jettons(slice jetton_wallet, int query_id, slice address, int amount, slice response_address, int fwd_amount) impure inline {
+    int should_carry_gas = false;
+    if (fwd_amount == -1) {
+        fwd_amount = 0;
+        should_carry_gas = true;
+    }
 
-;;
-;; 1. we need to send jettons instead of TONs
-;; 2. we need to determine what jetton is used
-;; 3. we need to check if we have enough TONs to pay for jettons sending
-;; 4. we need to send jettons back if it's not enough
-;;
-() buy(var args) impure {
+    var msg = begin_cell()
+        .store_uint(0x10, 6) ;; nobounce
+        .store_slice(jetton_wallet)
+        .store_coins(40000000) ;; 0.04 TON 
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_uint(0, 32) ;; transfer
+        .store_uint(query_id, 64)
+        .store_coins(amount)
+        .store_slice(address)
+        .store_slice(response_address)
+        .store_int(0, 1)
+        .store_coins(fwd_amount)
+        .end_cell();
+
+    int flag = should_carry_gas ? 64 : 1;
+    send_raw_message(msg, flag);
+}
+
+
+() transfer_nft(int query_id, slice new_owner, slice nft_address) impure inline {
+    builder nft_transfer = begin_cell()
+            .store_uint(op::transfer(), 32)
+            .store_uint(query_id, 64)
+            .store_slice(new_owner) ;; new_owner_address
+            .store_slice(new_owner) ;; response_address
+            .store_int(0, 1) ;; empty custom_payload
+            .store_coins(30000000) ;; forward amount to new_owner_address 0.03 TON
+            .store_int(0, 1); ;; empty forward_payload
+    var nft_msg = begin_cell()
+       .store_uint(0x18, 6)
+       .store_slice(nft_address)
+       .store_coins(0)
+       .store_uint(1, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+       .store_ref(nft_transfer.end_cell());
+
+
+    send_raw_message(nft_msg.end_cell(), 128);
+}
+
+
+() buy_with_tons(var args) impure {
     (
         int created_at,
         slice marketplace_address,
@@ -112,23 +160,86 @@ _ load_fees(cell fees_cell) inline {
         marketplace_fee
     );
 
-    builder nft_transfer = begin_cell()
-            .store_uint(op::transfer(), 32)
-            .store_uint(query_id, 64)
-            .store_slice(sender_address) ;; new_owner_address
-            .store_slice(sender_address) ;; response_address
-            .store_int(0, 1) ;; empty custom_payload
-            .store_coins(30000000) ;; forward amount to new_owner_address 0.03 TON
-            .store_int(0, 1); ;; empty forward_payload
-    var nft_msg = begin_cell()
-       .store_uint(0x18, 6)
-       .store_slice(nft_address)
-       .store_coins(0)
-       .store_uint(1, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-       .store_ref(nft_transfer.end_cell());
+    transfer_nft(
+        query_id, 
+        sender_address, 
+        nft_address
+    );
 
+    ;; Set sale as complete
+    save_data(
+        1,
+        created_at,
+        marketplace_address,
+        nft_address,
+        nft_owner_address,
+        full_price,
+        fees_cell,
+        jettons_dict
+    );
+}
 
-    send_raw_message(nft_msg.end_cell(), 128);
+() buy_with_jettons(var args) impure {
+    (
+        int created_at,
+        slice marketplace_address,
+        slice nft_address,
+        slice nft_owner_address,
+        int full_price,
+        cell fees_cell,
+        cell jettons_dict,
+
+        int my_balance,
+        int msg_value,
+        slice wallet_address,
+        slice buyer_address,
+        int  jetton_amount,
+        slice jetton_prices,
+        int query_id
+    ) = args;
+
+    var (jetton_price, jetton_marketplace_fee, jetton_royalty) = load_jetton_prices(jetton_prices);
+
+    if (jetton_amount < jetton_price) {
+        ;; TODO: return jettons to buyer
+        send_jettons(wallet_address, query_id, buyer_address, jetton_amount, buyer_address, -1);
+        return ();
+    }
+
+    ;; Check gas
+    throw_unless(450, msg_value >= min_gas_amount());
+
+    ;; Load royalty
+     var (
+        marketplace_fee_address,
+        _,
+        royalty_address,
+        _
+    ) = load_fees(fees_cell);
+
+    ;; Return revenue to owner
+    var owner_revenue = jetton_price - jetton_marketplace_fee - jetton_royalty;
+    send_jettons(wallet_address, query_id, nft_owner_address, owner_revenue, buyer_address, my_balance - msg_value);
+
+    ;; Send royalty
+    if ((jetton_royalty > 0) & (royalty_address.slice_bits() > 2)) {
+        send_jettons(wallet_address, query_id, royalty_address, jetton_royalty, buyer_address, 0);
+    }
+
+    ;; Send marketplace fee
+    send_jettons(wallet_address, query_id, marketplace_fee_address, jetton_marketplace_fee, buyer_address, 0);
+
+    ;; Return the rest to the sender
+    if (jetton_amount > jetton_price) {
+        send_jettons(wallet_address, query_id, buyer_address, jetton_amount - jetton_price, buyer_address, 0);
+    }
+
+    ;; Transfer NFT
+    transfer_nft(
+        query_id, 
+        buyer_address, 
+        nft_address
+    );
 
     ;; Set sale as complete
     save_data(
@@ -245,7 +356,7 @@ _ load_fees(cell fees_cell) inline {
     }
 
     if (op == 0) {
-        buy(
+        buy_with_tons(
             created_at,
             marketplace_address,
             nft_address,
@@ -267,7 +378,7 @@ _ load_fees(cell fees_cell) inline {
     }
 
     if (op == 2) { ;; buy
-        buy(
+        buy_with_tons(
             created_at,
             marketplace_address,
             nft_address,
@@ -281,6 +392,40 @@ _ load_fees(cell fees_cell) inline {
             sender_address,
             query_id
         );
+        return ();
+    }
+
+    if (op == jetton::transfer_notification()) {
+        var (wc, addr_hash) = parse_std_addr(sender_address);
+        
+        ;; check workchain
+        throw_unless(452, wc == 0);
+
+        ;; check jetton address
+        var (price_slice, found?) = jettons_dict.udict_get?(256, addr_hash);
+        throw_unless(453, found?);
+
+        var jetton_amount = in_msg_body~load_coins();
+        var buyer_address = in_msg_body~load_msg_addr();
+
+        buy_with_jettons(
+            created_at,
+            marketplace_address,
+            nft_address,
+            nft_owner_address,
+            full_price,
+            fees_cell,
+            jettons_dict,
+
+            my_balance,
+            msg_value,
+            sender_address,
+            buyer_address,
+            jetton_amount,
+            price_slice,
+            query_id
+        );
+        
         return ();
     }
 

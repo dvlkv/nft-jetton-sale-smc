@@ -1,14 +1,14 @@
 import { Address, Builder, Cell, CellMessage, CommonMessageInfo, ExternalMessage, InternalMessage, serializeDict, toNano } from 'ton'
-import { NftJettonFixpriceSaleV1Data } from './NftJettonFixpriceSaleV1.data'
+import { buildJettonPricesDict, NftJettonFixpriceSaleV1Data } from './NftJettonFixpriceSaleV1.data'
 import { NftJettonFixpriceSaleV1Local } from './NftJettonFixpriceSaleV1Local'
 import BN from 'bn.js'
 import { randomAddress } from "./utils/randomAddress";
 
 
-const jettons = new Map<Address, BN>([
-  [randomAddress(), new BN(1000000000)],
-  [randomAddress(), new BN(1000000228)],
-  [randomAddress(), new BN(2000001337)],
+const jettons = new Map<Address, { fullPrice: BN, marketplaceFee: BN, royaltyAmount: BN }>([
+  [randomAddress(), { fullPrice: toNano(1), marketplaceFee: toNano(0.1), royaltyAmount: toNano(0.1) }],
+  [randomAddress(), { fullPrice: toNano(1.2), marketplaceFee: toNano(0.12), royaltyAmount: toNano(0.12) }],
+  [randomAddress(), { fullPrice: toNano(1.1), marketplaceFee: toNano(0.11), royaltyAmount: toNano(0.11) }],
 ]);
 
 const defaultConfig: NftJettonFixpriceSaleV1Data = {
@@ -41,7 +41,7 @@ describe('fix price jetton sell contract v1', () => {
     expect(res.fullPrice.eq(defaultConfig.fullPrice)).toBe(true)
     expect(res.marketplaceFee.eq(defaultConfig.marketplaceFee)).toBe(true)
     expect(res.royaltyAmount.eq(defaultConfig.royaltyAmount)).toBe(true)
-    // TODO: check jettons dictionary
+    expect(res.jettonsDict.hash().toString('base64')).toEqual(buildJettonPricesDict(jettons).hash().toString('base64'))
   })
 
   it('should accept deploy only from marketplace', async () => {
