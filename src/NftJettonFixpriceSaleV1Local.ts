@@ -25,11 +25,12 @@ export class NftJettonFixpriceSaleV1Local {
       nftAddressSlice,
       nftOwnerAddressSlice,
       fullPrice,
+      jettonsDict,
       marketplaceFeeAddressSlice,
       marketplaceFee,
       royaltyAddressSlice,
       royaltyAmount,
-    ] = res.result as [BN, BN, BN, Slice, Slice, Slice, BN, Slice, BN, Slice, BN]
+    ] = res.result as [BN, BN, BN, Slice, Slice, Slice, BN, Cell, Slice, BN, Slice, BN]
 
     if (saleType.toNumber() !== 0x46495850) {
       throw new Error(`Unknown sale type: ${saleType.toString()}`)
@@ -42,6 +43,7 @@ export class NftJettonFixpriceSaleV1Local {
       nftAddress: nftAddressSlice.readAddress()!,
       nftOwnerAddress: nftOwnerAddressSlice.readAddress(),
       fullPrice,
+      jettonsDict,
       marketplaceFeeAddress: marketplaceFeeAddressSlice.readAddress()!,
       marketplaceFee,
       royaltyAddress: royaltyAddressSlice.readAddress()!,

@@ -1,8 +1,15 @@
-import { Builder, Cell, CellMessage, CommonMessageInfo, ExternalMessage, InternalMessage, toNano } from 'ton'
+import { Address, Builder, Cell, CellMessage, CommonMessageInfo, ExternalMessage, InternalMessage, serializeDict, toNano } from 'ton'
 import { NftJettonFixpriceSaleV1Data } from './NftJettonFixpriceSaleV1.data'
 import { NftJettonFixpriceSaleV1Local } from './NftJettonFixpriceSaleV1Local'
 import BN from 'bn.js'
 import { randomAddress } from "./utils/randomAddress";
+
+
+const jettons = new Map<Address, BN>([
+  [randomAddress(), new BN(1000000000)],
+  [randomAddress(), new BN(1000000228)],
+  [randomAddress(), new BN(2000001337)],
+]);
 
 const defaultConfig: NftJettonFixpriceSaleV1Data = {
   isComplete: false,
@@ -15,6 +22,7 @@ const defaultConfig: NftJettonFixpriceSaleV1Data = {
   marketplaceFeeAddress: randomAddress(),
   royaltyAmount: toNano('0.04'),
   royaltyAddress: randomAddress(),
+  jettonPrices: jettons,
 }
 
 describe('fix price jetton sell contract v1', () => {

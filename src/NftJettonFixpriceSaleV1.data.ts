@@ -1,4 +1,4 @@
-import { Address, Cell, contractAddress, StateInit } from 'ton'
+import { Address, Cell, contractAddress, serializeDict, StateInit } from 'ton'
 import BN from 'bn.js'
 import { NftJettonFixpriceSaleV1CodeCell } from './NftJettonFixpriceSaleV1.source'
 
@@ -13,7 +13,17 @@ export type NftJettonFixpriceSaleV1Data = {
   marketplaceFee: BN
   royaltyAddress: Address
   royaltyAmount: BN
-  canDeployByExternal?: boolean
+  canDeployByExternal?: boolean,
+  jettonPrices: Map<Address, BN>
+}
+
+function buildJettonPricesDict(jettons: Map<Address, BN>) {
+  // Transform jetton address to only hash
+  const transformedJettons = new Map([...jettons.entries()].map(([address, amount]) => [new BN(address.hash).toString(10), amount]));
+  const jettonsDict = serializeDict(transformedJettons, 256, (coins, cell) => {
+    cell.bits.writeCoins(coins);
+  });
+  return jettonsDict;
 }
 
 export function buildNftJettonFixpriceSaleV1DataCell(data: NftJettonFixpriceSaleV1Data) {
@@ -34,6 +44,9 @@ export function buildNftJettonFixpriceSaleV1DataCell(data: NftJettonFixpriceSale
   dataCell.bits.writeCoins(data.fullPrice)
   dataCell.refs.push(feesCell)
   dataCell.bits.writeUint(data.canDeployByExternal ? 1 : 0, 1) // can_deploy_by_external
+  dataCell.bits.writeBit(true)
+  dataCell.refs.push(buildJettonPricesDict(data.jettonPrices))
+
 
   return dataCell
 }

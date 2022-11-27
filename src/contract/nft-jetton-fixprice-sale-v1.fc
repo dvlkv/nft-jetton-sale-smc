@@ -17,7 +17,8 @@ _ load_data() inline {
         ds~load_msg_addr(), ;; nft_owner_address
         ds~load_coins(),    ;; full_price
         ds~load_ref(),      ;; fees_cell
-        ds~load_uint(1)     ;; can_deploy_by_external
+        ds~load_uint(1),    ;; can_deploy_by_external
+        ds~load_dict()      ;; jettons_dict
     );
 }
 
@@ -31,7 +32,7 @@ _ load_fees(cell fees_cell) inline {
     );
 }
 
-() save_data(int is_complete, int created_at, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell) impure inline {
+() save_data(int is_complete, int created_at, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell, cell jettons_dict) impure inline {
     set_data(
         begin_cell()
             .store_uint(is_complete, 1)
@@ -42,6 +43,7 @@ _ load_fees(cell fees_cell) inline {
             .store_coins(full_price)
             .store_ref(fees_cell)
             .store_uint(0, 1) ;; can_deploy_by_external
+            .store_dict(jettons_dict) ;; jettons_dict
             .end_cell()
     );
 }
@@ -57,8 +59,14 @@ _ load_fees(cell fees_cell) inline {
     send_raw_message(msg, 1);
 }
 
-() buy(var args) impure {
 
+;;
+;; 1. we need to send jettons instead of TONs
+;; 2. we need to determine what jetton is used
+;; 3. we need to check if we have enough TONs to pay for jettons sending
+;; 4. we need to send jettons back if it's not enough
+;;
+() buy(var args) impure {
     (
         int created_at,
         slice marketplace_address,
@@ -66,6 +74,7 @@ _ load_fees(cell fees_cell) inline {
         slice nft_owner_address,
         int full_price,
         cell fees_cell,
+        cell jettons_dict,
 
         int my_balance,
         int msg_value,
@@ -84,8 +93,8 @@ _ load_fees(cell fees_cell) inline {
 
     ;; Owner message
     send_money(
-    nft_owner_address,
-    full_price - marketplace_fee - royalty_amount + (my_balance - msg_value)
+        nft_owner_address,
+        full_price - marketplace_fee - royalty_amount + (my_balance - msg_value)
     );
 
     ;; Royalty message
@@ -128,7 +137,8 @@ _ load_fees(cell fees_cell) inline {
         nft_address,
         nft_owner_address,
         full_price,
-        fees_cell
+        fees_cell,
+        jettons_dict
     );
 }
 
@@ -150,7 +160,8 @@ _ load_fees(cell fees_cell) inline {
         nft_owner_address,
         full_price,
         fees_cell,
-        can_deploy_by_external
+        can_deploy_by_external,
+        jettons_dict
     ) = load_data();
 
     int op = 0;
@@ -188,7 +199,8 @@ _ load_fees(cell fees_cell) inline {
                 nft_address,
                 nft_owner_address,
                 full_price,
-                fees_cell
+                fees_cell,
+                jettons_dict
         );
         return ();
     }
@@ -224,7 +236,8 @@ _ load_fees(cell fees_cell) inline {
             nft_address,
             prev_owner_address,
             full_price,
-            fees_cell
+            fees_cell,
+            jettons_dict
         );
 
         return ();
@@ -238,6 +251,7 @@ _ load_fees(cell fees_cell) inline {
             nft_owner_address,
             full_price,
             fees_cell,
+            jettons_dict,
 
             my_balance,
             msg_value,
@@ -259,6 +273,7 @@ _ load_fees(cell fees_cell) inline {
             nft_owner_address,
             full_price,
             fees_cell,
+            jettons_dict,
 
             my_balance,
             msg_value,
@@ -280,7 +295,8 @@ _ load_fees(cell fees_cell) inline {
             nft_owner_address,
             full_price,
             fees_cell,
-            can_deploy_by_external
+            can_deploy_by_external,
+            jettons_dict
     ) = load_data();
 
     if (can_deploy_by_external == 1) {
@@ -292,14 +308,15 @@ _ load_fees(cell fees_cell) inline {
                 nft_address,
                 nft_owner_address,
                 full_price,
-                fees_cell
+                fees_cell,
+                jettons_dict
         );
         return ();
     }
     throw(0xfffe);
 }
 
-(int, int, int, slice, slice, slice, int, slice, int, slice, int) get_sale_data() method_id {
+(int, int, int, slice, slice, slice, int, cell, slice, int, slice, int) get_sale_data() method_id {
     var (
         is_complete,
         created_at,
@@ -308,7 +325,8 @@ _ load_fees(cell fees_cell) inline {
         nft_owner_address,
         full_price,
         fees_cell,
-        can_deploy_by_external
+        can_deploy_by_external,
+        jettons_dict
     ) = load_data();
 
     var (
@@ -326,6 +344,7 @@ _ load_fees(cell fees_cell) inline {
         nft_address,
         nft_owner_address,
         full_price,
+        jettons_dict,
         marketplace_fee_address,
         marketplace_fee,
         royalty_address,
