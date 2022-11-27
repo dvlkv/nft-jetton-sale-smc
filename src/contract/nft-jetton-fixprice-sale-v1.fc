@@ -74,18 +74,22 @@ _ load_jetton_prices(slice prices_slice) inline {
         should_carry_gas = true;
     }
 
-    var msg = begin_cell()
-        .store_uint(0x10, 6) ;; nobounce
-        .store_slice(jetton_wallet)
-        .store_coins(40000000) ;; 0.04 TON 
-        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-        .store_uint(0, 32) ;; transfer
+    var msg_payload = begin_cell()
+        .store_uint(jetton::transfer(), 32) ;; transfer
         .store_uint(query_id, 64)
         .store_coins(amount)
         .store_slice(address)
         .store_slice(response_address)
         .store_int(0, 1)
         .store_coins(fwd_amount)
+        .end_cell();
+
+    var msg = begin_cell()
+        .store_uint(0x10, 6) ;; nobounce
+        .store_slice(jetton_wallet)
+        .store_coins(40000000) ;; 0.04 TON 
+        .store_uint(1, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_ref(msg_payload)
         .end_cell();
 
     int flag = should_carry_gas ? 64 : 1;
@@ -201,7 +205,6 @@ _ load_jetton_prices(slice prices_slice) inline {
     var (jetton_price, jetton_marketplace_fee, jetton_royalty) = load_jetton_prices(jetton_prices);
 
     if (jetton_amount < jetton_price) {
-        ;; TODO: return jettons to buyer
         send_jettons(wallet_address, query_id, buyer_address, jetton_amount, buyer_address, -1);
         return ();
     }
