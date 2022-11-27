@@ -410,7 +410,6 @@ describe('fix price jetton sell contract v1', () => {
     expect(res.exit_code).toEqual(451)
   });
 
-
   it('should buy only for allowed jettons', async () => {
     const buyerAddress = randomAddress();
     let randomQueryId = 227;
@@ -442,6 +441,8 @@ describe('fix price jetton sell contract v1', () => {
       // Owner revenue
       {
         assert(res.actionList[0].type === 'send_msg');
+        assert(res.actionList[0].message.info.type === 'internal')
+        assertCoins(res.actionList[0].message.info.value.coins, toNano(0.04))
         expect(res.actionList[0].mode).toEqual(1);
         assertAddress(res.actionList[0].message.info.dest, jettonAddress);
         const slice = res.actionList[0].message.body.beginParse();
@@ -458,6 +459,8 @@ describe('fix price jetton sell contract v1', () => {
       // Royalties fee
       {
         assert(res.actionList[1].type === 'send_msg');
+        assert(res.actionList[1].message.info.type === 'internal')
+        assertCoins(res.actionList[1].message.info.value.coins, toNano(0.04))
         expect(res.actionList[1].mode).toEqual(1);
         assertAddress(res.actionList[1].message.info.dest, jettonAddress);
         const slice = res.actionList[1].message.body.beginParse();
@@ -473,6 +476,8 @@ describe('fix price jetton sell contract v1', () => {
       // Marketplace fee
       {
         assert(res.actionList[2].type === 'send_msg');
+        assert(res.actionList[2].message.info.type === 'internal')
+        assertCoins(res.actionList[2].message.info.value.coins, toNano(0.04))
         expect(res.actionList[2].mode).toEqual(1);
         assertAddress(res.actionList[2].message.info.dest, jettonAddress);
         const slice = res.actionList[2].message.body.beginParse();
@@ -560,6 +565,8 @@ describe('fix price jetton sell contract v1', () => {
 
     {
       assert(res.actionList[0].type === 'send_msg');
+      assert(res.actionList[0].message.info.type === 'internal')
+      assertCoins(res.actionList[0].message.info.value.coins, toNano(0))
       expect(res.actionList[0].mode).toEqual(64);
       assertAddress(res.actionList[0].message.info.dest, jettonAddress);
       const slice = res.actionList[0].message.body.beginParse();
@@ -607,6 +614,8 @@ describe('fix price jetton sell contract v1', () => {
     // Owner revenue
     {
       assert(res.actionList[0].type === 'send_msg');
+      assert(res.actionList[0].message.info.type === 'internal');
+      assertCoins(res.actionList[0].message.info.value.coins, toNano(0.04));
       expect(res.actionList[0].mode).toEqual(1);
       assertAddress(res.actionList[0].message.info.dest, jettonAddress);
       const slice = res.actionList[0].message.body.beginParse();
@@ -623,6 +632,8 @@ describe('fix price jetton sell contract v1', () => {
     // Royalties fee
     {
       assert(res.actionList[1].type === 'send_msg');
+      assert(res.actionList[1].message.info.type === 'internal');
+      assertCoins(res.actionList[1].message.info.value.coins, toNano(0.04));
       expect(res.actionList[1].mode).toEqual(1);
       assertAddress(res.actionList[1].message.info.dest, jettonAddress);
       const slice = res.actionList[1].message.body.beginParse();
@@ -638,6 +649,8 @@ describe('fix price jetton sell contract v1', () => {
     // Marketplace fee
     {
       assert(res.actionList[2].type === 'send_msg');
+      assert(res.actionList[2].message.info.type === 'internal');
+      assertCoins(res.actionList[2].message.info.value.coins, toNano(0.04));
       expect(res.actionList[2].mode).toEqual(1);
       assertAddress(res.actionList[2].message.info.dest, jettonAddress);
       const slice = res.actionList[2].message.body.beginParse();
@@ -702,6 +715,8 @@ describe('fix price jetton sell contract v1', () => {
     // Owner revenue
     {
       assert(res.actionList[0].type === 'send_msg');
+      assert(res.actionList[0].message.info.type === 'internal')
+      assertCoins(res.actionList[0].message.info.value.coins, toNano(0.04))
       expect(res.actionList[0].mode).toEqual(1);
       assertAddress(res.actionList[0].message.info.dest, jettonAddress);
       const slice = res.actionList[0].message.body.beginParse();
@@ -718,6 +733,8 @@ describe('fix price jetton sell contract v1', () => {
     // Royalties fee
     {
       assert(res.actionList[1].type === 'send_msg');
+      assert(res.actionList[1].message.info.type === 'internal')
+      assertCoins(res.actionList[1].message.info.value.coins, toNano(0.04))
       expect(res.actionList[1].mode).toEqual(1);
       assertAddress(res.actionList[1].message.info.dest, jettonAddress);
       const slice = res.actionList[1].message.body.beginParse();
@@ -733,6 +750,8 @@ describe('fix price jetton sell contract v1', () => {
     // Marketplace fee
     {
       assert(res.actionList[2].type === 'send_msg');
+      assert(res.actionList[2].message.info.type === 'internal')
+      assertCoins(res.actionList[2].message.info.value.coins, toNano(0.04))
       expect(res.actionList[2].mode).toEqual(1);
       assertAddress(res.actionList[2].message.info.dest, jettonAddress);
       const slice = res.actionList[2].message.body.beginParse();
@@ -749,6 +768,8 @@ describe('fix price jetton sell contract v1', () => {
     // Sender cashback
     {
       assert(res.actionList[3].type === 'send_msg');
+      assert(res.actionList[3].message.info.type === 'internal')
+      assertCoins(res.actionList[3].message.info.value.coins, toNano(0.04))
       expect(res.actionList[3].mode).toEqual(1);
       assertAddress(res.actionList[3].message.info.dest, jettonAddress);
       const slice = res.actionList[3].message.body.beginParse();
@@ -815,6 +836,8 @@ describe('fix price jetton sell contract v1', () => {
     {
       assert(res.actionList[0].type === 'send_msg');
       expect(res.actionList[0].mode).toEqual(64);
+      assert(res.actionList[0].message.info.type === 'internal')
+      assertCoins(res.actionList[0].message.info.value.coins, toNano(0))
       assertAddress(res.actionList[0].message.info.dest, jettonAddress);
       const slice = res.actionList[0].message.body.beginParse();
       assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
@@ -827,7 +850,7 @@ describe('fix price jetton sell contract v1', () => {
     }
   })
 
-  it('should bounce if smaller amount', async () => {
+  it('should bounce jettons if smaller amount', async () => {
     const buyerAddress = randomAddress();
     let randomQueryId = 227;
 
@@ -863,6 +886,8 @@ describe('fix price jetton sell contract v1', () => {
     {
       assert(res.actionList[0].type === 'send_msg');
       expect(res.actionList[0].mode).toEqual(64);
+      assert(res.actionList[0].message.info.type === 'internal')
+      assertCoins(res.actionList[0].message.info.value.coins, toNano(0))
       assertAddress(res.actionList[0].message.info.dest, jettonAddress);
       const slice = res.actionList[0].message.body.beginParse();
       assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
