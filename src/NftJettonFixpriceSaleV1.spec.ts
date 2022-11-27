@@ -41,6 +41,7 @@ describe('fix price jetton sell contract v1', () => {
     expect(res.fullPrice.eq(defaultConfig.fullPrice)).toBe(true)
     expect(res.marketplaceFee.eq(defaultConfig.marketplaceFee)).toBe(true)
     expect(res.royaltyAmount.eq(defaultConfig.royaltyAmount)).toBe(true)
+    // TODO: check jettons dictionary
   })
 
   it('should accept deploy only from marketplace', async () => {
@@ -275,7 +276,7 @@ describe('fix price jetton sell contract v1', () => {
     expect(res.exit_code).not.toEqual(0)
   })
 
-  it('should buy nft', async () => {
+  it('should buy nft by TONs', async () => {
     const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(defaultConfig)
     const buyerAddress = randomAddress()
     const res = await sale.contract.sendInternalMessage(
@@ -356,6 +357,28 @@ describe('fix price jetton sell contract v1', () => {
 
     expect(ownerTransfer).toBeTruthy()
   })
+
+  it('should not buy nft with empty TON price', async () => {
+    const conf: NftJettonFixpriceSaleV1Data = {
+      ...defaultConfig,
+      fullPrice: toNano(0),
+    }
+    const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(conf)
+    const buyerAddress = randomAddress()
+    const res = await sale.contract.sendInternalMessage(
+      new InternalMessage({
+        to: sale.address,
+        from: buyerAddress,
+        value: toNano(2),
+        bounce: false,
+        body: new CommonMessageInfo({
+          body: new CellMessage(new Cell()),
+        }),
+      })
+    )
+
+    expect(res.exit_code).toEqual(451)
+  });
 
   it('should allow cancel after buy', async () => {
     const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(defaultConfig)

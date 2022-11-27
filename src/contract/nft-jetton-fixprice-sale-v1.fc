@@ -82,6 +82,7 @@ _ load_fees(cell fees_cell) inline {
         int query_id
     ) = args;
 
+    throw_unless(451, full_price != 0);
     throw_unless(450, msg_value >= full_price + min_gas_amount());
 
     var (
