@@ -46,8 +46,12 @@ export function buildNftJettonFixpriceSaleV1DataCell(data: NftJettonFixpriceSale
   dataCell.bits.writeCoins(data.fullPrice)
   dataCell.refs.push(feesCell)
   dataCell.bits.writeUint(data.canDeployByExternal ? 1 : 0, 1) // can_deploy_by_external
-  dataCell.bits.writeBit(true)
-  dataCell.refs.push(buildJettonPricesDict(data.jettonPrices))
+  if (data.jettonPrices.size > 0) {
+    dataCell.bits.writeBit(true)
+    dataCell.refs.push(buildJettonPricesDict(data.jettonPrices))
+  } else {
+    dataCell.bits.writeBit(false)
+  }
 
 
   return dataCell

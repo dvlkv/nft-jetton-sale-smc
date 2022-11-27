@@ -1,9 +1,23 @@
 import { SmartContract } from 'ton-contract-executor'
-import { Address, Cell, contractAddress, Slice } from 'ton'
+import { Address, Cell, contractAddress, parseDict, Slice } from 'ton'
 import BN from 'bn.js'
 import { buildNftJettonFixpriceSaleV1DataCell, NftJettonFixpriceSaleV1Data, Queries } from './NftJettonFixpriceSaleV1.data'
 import { NftJettonFixPriceSaleSourceV1 } from './NftJettonFixpriceSaleV1.source'
 import { compileFunc } from "./utils/compileFunc";
+
+
+export function loadJettonPricesDict(dict: Cell): Map<Address, { fullPrice: BN, marketplaceFee: BN, royaltyAmount: BN }> {
+  // Transform jetton address to only hash
+  let jettonPricesDict = parseDict(dict.beginParse(), 256, (prices) => {
+    return {
+      fullPrice: prices.readCoins(),
+      marketplaceFee: prices.readCoins(),
+      royaltyAmount: prices.readCoins(),
+    }
+  })
+
+  return new Map([...jettonPricesDict.entries()].map(([address, amount]) => [new Address(0, new BN(address).toBuffer()), amount]))
+}
 
 export class NftJettonFixpriceSaleV1Local {
   private constructor(public readonly contract: SmartContract, public readonly address: Address) {}
@@ -43,7 +57,7 @@ export class NftJettonFixpriceSaleV1Local {
       nftAddress: nftAddressSlice.readAddress()!,
       nftOwnerAddress: nftOwnerAddressSlice.readAddress(),
       fullPrice,
-      jettonsDict,
+      jettonPrices: loadJettonPricesDict(jettonsDict),
       marketplaceFeeAddress: marketplaceFeeAddressSlice.readAddress()!,
       marketplaceFee,
       royaltyAddress: royaltyAddressSlice.readAddress()!,

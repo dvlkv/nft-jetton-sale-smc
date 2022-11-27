@@ -5,6 +5,11 @@ import BN from 'bn.js'
 import { randomAddress } from "./utils/randomAddress";
 
 
+function assertNotNull(a: unknown): asserts a {
+  expect(a).not.toBeNull();
+}
+
+
 const jettons = new Map<Address, { fullPrice: BN, marketplaceFee: BN, royaltyAmount: BN }>([
   [randomAddress(), { fullPrice: toNano(1), marketplaceFee: toNano(0.1), royaltyAmount: toNano(0.1) }],
   [randomAddress(), { fullPrice: toNano(1.2), marketplaceFee: toNano(0.12), royaltyAmount: toNano(0.12) }],
@@ -41,7 +46,17 @@ describe('fix price jetton sell contract v1', () => {
     expect(res.fullPrice.eq(defaultConfig.fullPrice)).toBe(true)
     expect(res.marketplaceFee.eq(defaultConfig.marketplaceFee)).toBe(true)
     expect(res.royaltyAmount.eq(defaultConfig.royaltyAmount)).toBe(true)
-    expect(res.jettonsDict.hash().toString('base64')).toEqual(buildJettonPricesDict(jettons).hash().toString('base64'))
+
+    for (let key of jettons.keys()) {
+      let a = jettons.get(key)
+      let b = res.jettonPrices.get([...res.jettonPrices.keys()].find(k => k.toFriendly() === key.toFriendly())!) // Map is missbehaving with Address keys
+      assertNotNull(a)
+      assertNotNull(b)
+
+      expect(a.fullPrice.eq(b.fullPrice)).toBe(true)
+      expect(a.marketplaceFee.eq(b.marketplaceFee)).toBe(true)
+      expect(a.royaltyAmount.eq(b.royaltyAmount)).toBe(true)
+    }
   })
 
   it('should accept deploy only from marketplace', async () => {
