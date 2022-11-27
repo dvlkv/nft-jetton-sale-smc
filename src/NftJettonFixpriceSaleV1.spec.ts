@@ -1,4 +1,4 @@
-import { Address, Builder, Cell, CellMessage, CommonMessageInfo, ExternalMessage, InternalMessage, serializeDict, toNano } from 'ton'
+import { Address, beginCell, Builder, Cell, CellMessage, CommonMessageInfo, ExternalMessage, InternalMessage, serializeDict, toNano } from 'ton'
 import { buildJettonPricesDict, NftJettonFixpriceSaleV1Data } from './NftJettonFixpriceSaleV1.data'
 import { NftJettonFixpriceSaleV1Local } from './NftJettonFixpriceSaleV1Local'
 import BN from 'bn.js'
@@ -7,6 +7,21 @@ import { randomAddress } from "./utils/randomAddress";
 
 function assertNotNull(a: unknown): asserts a {
   expect(a).not.toBeNull();
+}
+
+function assert(a: unknown): asserts a {
+  expect(a).toBeTruthy();
+}
+
+function assertAddress(a: unknown, b: Address) {
+  expect(a).toBeInstanceOf(Address);
+  if (a instanceof Address) {
+    expect(a.equals(b)).toBeTruthy();
+  }
+}
+
+function assertCoins(a: BN, b: BN) {
+  expect(a.eq(b)).toBeTruthy();
 }
 
 
@@ -394,6 +409,471 @@ describe('fix price jetton sell contract v1', () => {
 
     expect(res.exit_code).toEqual(451)
   });
+
+
+  it('should buy only for allowed jettons', async () => {
+    const buyerAddress = randomAddress();
+    let randomQueryId = 227;
+
+    for (let [jettonAddress, prices] of jettons) {
+      const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(defaultConfig);
+
+      let forwardJettonPayload = beginCell()
+        .storeUint(0x7362d09c, 32)
+        .storeUint(++randomQueryId, 64)
+        .storeCoins(prices.fullPrice)
+        .storeAddress(buyerAddress)
+        .endCell();
+      let res = await sale.contract.sendInternalMessage(
+        new InternalMessage({
+          to: sale.address,
+          from: jettonAddress,
+          value: toNano(1),
+          bounce: false,
+          body: new CommonMessageInfo({
+            body: new CellMessage(forwardJettonPayload),
+          })
+        })
+      );
+
+      expect(res.exit_code).toEqual(0);
+      expect(res.actionList.length).toEqual(4);
+
+      // Owner revenue
+      {
+        assert(res.actionList[0].type === 'send_msg');
+        expect(res.actionList[0].mode).toEqual(1);
+        assertAddress(res.actionList[0].message.info.dest, jettonAddress);
+        const slice = res.actionList[0].message.body.beginParse();
+        assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
+        expect(slice.readUintNumber(64)).toEqual(randomQueryId); // query_id
+        assertCoins(slice.readCoins(), prices.fullPrice.sub(prices.marketplaceFee).sub(prices.royaltyAmount)); // amount
+        assertAddress(slice.readAddress(), defaultConfig.nftOwnerAddress!); // address
+        assertAddress(slice.readAddress(), buyerAddress); // response address
+        expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
+        assertCoins(slice.readCoins(), toNano(0)); // forward amount
+      }
+
+
+      // Royalties fee
+      {
+        assert(res.actionList[1].type === 'send_msg');
+        expect(res.actionList[1].mode).toEqual(1);
+        assertAddress(res.actionList[1].message.info.dest, jettonAddress);
+        const slice = res.actionList[1].message.body.beginParse();
+        assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
+        expect(slice.readUintNumber(64)).toEqual(randomQueryId); // query_id
+        assertCoins(slice.readCoins(), prices.royaltyAmount); // amount
+        assertAddress(slice.readAddress(), defaultConfig.royaltyAddress); // address
+        assertAddress(slice.readAddress(), buyerAddress); // response address
+        expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
+        assertCoins(slice.readCoins(), toNano(0)); // forward amount
+      }
+
+      // Marketplace fee
+      {
+        assert(res.actionList[2].type === 'send_msg');
+        expect(res.actionList[2].mode).toEqual(1);
+        assertAddress(res.actionList[2].message.info.dest, jettonAddress);
+        const slice = res.actionList[2].message.body.beginParse();
+        assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
+        expect(slice.readUintNumber(64)).toEqual(randomQueryId); // query_id
+        assertCoins(slice.readCoins(), prices.marketplaceFee); // amount
+        assertAddress(slice.readAddress(), defaultConfig.marketplaceFeeAddress); // address
+        assertAddress(slice.readAddress(), buyerAddress); // response address
+        expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
+        assertCoins(slice.readCoins(), toNano(0)); // forward amount
+      }
+
+
+      // Nft transfer
+      {
+        assert(res.actionList[3].type === 'send_msg')
+        expect(res.actionList[3].mode).toEqual(128);
+        assertAddress(res.actionList[3].message.info.dest, defaultConfig.nftAddress)
+        const slice = res.actionList[3].message.body.beginParse()
+        assertCoins(slice.readUint(32), new BN(0x5fcc3d14)) // op
+        expect(slice.readUintNumber(64)).toEqual(randomQueryId) // query_id
+        assertAddress(slice.readAddress(), buyerAddress)  // new owner
+        assertAddress(slice.readAddress(), buyerAddress)   // response address
+        expect(slice.readUintNumber(1)).toEqual(0)
+        const forward = slice.readCoins() // forward amount
+        assert(forward.gte(toNano('0.03')))
+      }
+    }
+  });
+
+  it('should bounce jettons after finish', async () => {
+    const buyerAddress = randomAddress();
+    let randomQueryId = 227;
+
+    let [jettonAddress, prices] = [...jettons.entries()][0];
+
+    const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(defaultConfig);
+    sale.contract.setBalance(toNano(1));
+
+    {
+      let forwardJettonPayload = beginCell()
+        .storeUint(0x7362d09c, 32)
+        .storeUint(++randomQueryId, 64)
+        .storeCoins(prices.fullPrice)
+        .storeAddress(buyerAddress)
+        .endCell();
+      let res = await sale.contract.sendInternalMessage(
+        new InternalMessage({
+          to: sale.address,
+          from: jettonAddress,
+          value: toNano(1),
+          bounce: false,
+          body: new CommonMessageInfo({
+            body: new CellMessage(forwardJettonPayload),
+          })
+        })
+      );
+
+      // Success sale
+      expect(res.exit_code).toEqual(0);
+      expect(res.actionList.length).toEqual(4);
+    }
+
+
+    let forwardJettonPayload = beginCell()
+      .storeUint(0x7362d09c, 32)
+      .storeUint(++randomQueryId, 64)
+      .storeCoins(prices.fullPrice)
+      .storeAddress(buyerAddress)
+      .endCell();
+    let res = await sale.contract.sendInternalMessage(
+      new InternalMessage({
+        to: sale.address,
+        from: jettonAddress,
+        value: toNano(1),
+        bounce: false,
+        body: new CommonMessageInfo({
+          body: new CellMessage(forwardJettonPayload),
+        })
+      })
+    );
+
+    expect(res.exit_code).toEqual(0);
+    expect(res.actionList.length).toEqual(1);
+
+    {
+      assert(res.actionList[0].type === 'send_msg');
+      expect(res.actionList[0].mode).toEqual(64);
+      assertAddress(res.actionList[0].message.info.dest, jettonAddress);
+      const slice = res.actionList[0].message.body.beginParse();
+      assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
+      expect(slice.readUintNumber(64)).toEqual(randomQueryId); // query_id
+      assertCoins(slice.readCoins(), prices.fullPrice); // amount
+      assertAddress(slice.readAddress(), buyerAddress); // address
+      assertAddress(slice.readAddress(), buyerAddress); // response address
+      expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
+      assertCoins(slice.readCoins(), toNano(0)); // forward amount
+    }
+  })
+
+  it('should forward TONs from balance to owner', async () => {
+    const buyerAddress = randomAddress();
+    let randomQueryId = 227;
+
+    let [jettonAddress, prices] = [...jettons.entries()][0];
+
+    const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(defaultConfig);
+    sale.contract.setBalance(toNano(1));
+
+
+    let forwardJettonPayload = beginCell()
+      .storeUint(0x7362d09c, 32)
+      .storeUint(++randomQueryId, 64)
+      .storeCoins(prices.fullPrice)
+      .storeAddress(buyerAddress)
+      .endCell();
+    let res = await sale.contract.sendInternalMessage(
+      new InternalMessage({
+        to: sale.address,
+        from: jettonAddress,
+        value: toNano(1),
+        bounce: false,
+        body: new CommonMessageInfo({
+          body: new CellMessage(forwardJettonPayload),
+        })
+      })
+    );
+
+    expect(res.exit_code).toEqual(0);
+    expect(res.actionList.length).toEqual(4);
+
+    // Owner revenue
+    {
+      assert(res.actionList[0].type === 'send_msg');
+      expect(res.actionList[0].mode).toEqual(1);
+      assertAddress(res.actionList[0].message.info.dest, jettonAddress);
+      const slice = res.actionList[0].message.body.beginParse();
+      assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
+      expect(slice.readUintNumber(64)).toEqual(randomQueryId); // query_id
+      assertCoins(slice.readCoins(), prices.fullPrice.sub(prices.marketplaceFee).sub(prices.royaltyAmount)); // amount
+      assertAddress(slice.readAddress(), defaultConfig.nftOwnerAddress!); // address
+      assertAddress(slice.readAddress(), buyerAddress); // response address
+      expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
+      assertCoins(slice.readCoins(), toNano(1)); // forward amount
+    }
+
+
+    // Royalties fee
+    {
+      assert(res.actionList[1].type === 'send_msg');
+      expect(res.actionList[1].mode).toEqual(1);
+      assertAddress(res.actionList[1].message.info.dest, jettonAddress);
+      const slice = res.actionList[1].message.body.beginParse();
+      assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
+      expect(slice.readUintNumber(64)).toEqual(randomQueryId); // query_id
+      assertCoins(slice.readCoins(), prices.royaltyAmount); // amount
+      assertAddress(slice.readAddress(), defaultConfig.royaltyAddress); // address
+      assertAddress(slice.readAddress(), buyerAddress); // response address
+      expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
+      assertCoins(slice.readCoins(), toNano(0)); // forward amount
+    }
+
+    // Marketplace fee
+    {
+      assert(res.actionList[2].type === 'send_msg');
+      expect(res.actionList[2].mode).toEqual(1);
+      assertAddress(res.actionList[2].message.info.dest, jettonAddress);
+      const slice = res.actionList[2].message.body.beginParse();
+      assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
+      expect(slice.readUintNumber(64)).toEqual(randomQueryId); // query_id
+      assertCoins(slice.readCoins(), prices.marketplaceFee); // amount
+      assertAddress(slice.readAddress(), defaultConfig.marketplaceFeeAddress); // address
+      assertAddress(slice.readAddress(), buyerAddress); // response address
+      expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
+      assertCoins(slice.readCoins(), toNano(0)); // forward amount
+    }
+
+
+    // Nft transfer
+    {
+      assert(res.actionList[3].type === 'send_msg')
+      expect(res.actionList[3].mode).toEqual(128);
+      assertAddress(res.actionList[3].message.info.dest, defaultConfig.nftAddress)
+      const slice = res.actionList[3].message.body.beginParse()
+      assertCoins(slice.readUint(32), new BN(0x5fcc3d14)) // op
+      expect(slice.readUintNumber(64)).toEqual(randomQueryId) // query_id
+      assertAddress(slice.readAddress(), buyerAddress)  // new owner
+      assertAddress(slice.readAddress(), buyerAddress)   // response address
+      expect(slice.readUintNumber(1)).toEqual(0)
+      const forward = slice.readCoins() // forward amount
+      assert(forward.gte(toNano('0.03')))
+    }
+  })
+
+  it('should return extra jettons', async () => {
+    const buyerAddress = randomAddress();
+    let randomQueryId = 227;
+
+    let [jettonAddress, prices] = [...jettons.entries()][0];
+
+    const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(defaultConfig);
+    sale.contract.setBalance(toNano(1));
+
+
+    let forwardJettonPayload = beginCell()
+      .storeUint(0x7362d09c, 32)
+      .storeUint(++randomQueryId, 64)
+      .storeCoins(prices.fullPrice.mul(new BN(3)))
+      .storeAddress(buyerAddress)
+      .endCell();
+    let res = await sale.contract.sendInternalMessage(
+      new InternalMessage({
+        to: sale.address,
+        from: jettonAddress,
+        value: toNano(1),
+        bounce: false,
+        body: new CommonMessageInfo({
+          body: new CellMessage(forwardJettonPayload),
+        })
+      })
+    );
+
+    expect(res.exit_code).toEqual(0);
+    expect(res.actionList.length).toEqual(5);
+
+
+    // Owner revenue
+    {
+      assert(res.actionList[0].type === 'send_msg');
+      expect(res.actionList[0].mode).toEqual(1);
+      assertAddress(res.actionList[0].message.info.dest, jettonAddress);
+      const slice = res.actionList[0].message.body.beginParse();
+      assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
+      expect(slice.readUintNumber(64)).toEqual(randomQueryId); // query_id
+      assertCoins(slice.readCoins(), prices.fullPrice.sub(prices.marketplaceFee).sub(prices.royaltyAmount)); // amount
+      assertAddress(slice.readAddress(), defaultConfig.nftOwnerAddress!); // address
+      assertAddress(slice.readAddress(), buyerAddress); // response address
+      expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
+      assertCoins(slice.readCoins(), toNano(1)); // forward amount
+    }
+
+
+    // Royalties fee
+    {
+      assert(res.actionList[1].type === 'send_msg');
+      expect(res.actionList[1].mode).toEqual(1);
+      assertAddress(res.actionList[1].message.info.dest, jettonAddress);
+      const slice = res.actionList[1].message.body.beginParse();
+      assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
+      expect(slice.readUintNumber(64)).toEqual(randomQueryId); // query_id
+      assertCoins(slice.readCoins(), prices.royaltyAmount); // amount
+      assertAddress(slice.readAddress(), defaultConfig.royaltyAddress); // address
+      assertAddress(slice.readAddress(), buyerAddress); // response address
+      expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
+      assertCoins(slice.readCoins(), toNano(0)); // forward amount
+    }
+
+    // Marketplace fee
+    {
+      assert(res.actionList[2].type === 'send_msg');
+      expect(res.actionList[2].mode).toEqual(1);
+      assertAddress(res.actionList[2].message.info.dest, jettonAddress);
+      const slice = res.actionList[2].message.body.beginParse();
+      assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
+      expect(slice.readUintNumber(64)).toEqual(randomQueryId); // query_id
+      assertCoins(slice.readCoins(), prices.marketplaceFee); // amount
+      assertAddress(slice.readAddress(), defaultConfig.marketplaceFeeAddress); // address
+      assertAddress(slice.readAddress(), buyerAddress); // response address
+      expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
+      assertCoins(slice.readCoins(), toNano(0)); // forward amount
+    }
+
+
+    // Sender cashback
+    {
+      assert(res.actionList[3].type === 'send_msg');
+      expect(res.actionList[3].mode).toEqual(1);
+      assertAddress(res.actionList[3].message.info.dest, jettonAddress);
+      const slice = res.actionList[3].message.body.beginParse();
+      assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
+      expect(slice.readUintNumber(64)).toEqual(randomQueryId); // query_id
+      assertCoins(slice.readCoins(), prices.fullPrice.mul(new BN(2))); // amount
+      assertAddress(slice.readAddress(), buyerAddress); // address
+      assertAddress(slice.readAddress(), buyerAddress); // response address
+      expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
+      assertCoins(slice.readCoins(), toNano(0)); // forward amount
+    }
+
+
+    // Nft transfer
+    {
+      assert(res.actionList[4].type === 'send_msg')
+      expect(res.actionList[4].mode).toEqual(128);
+      assertAddress(res.actionList[4].message.info.dest, defaultConfig.nftAddress)
+      const slice = res.actionList[4].message.body.beginParse()
+      assertCoins(slice.readUint(32), new BN(0x5fcc3d14)) // op
+      expect(slice.readUintNumber(64)).toEqual(randomQueryId) // query_id
+      assertAddress(slice.readAddress(), buyerAddress)  // new owner
+      assertAddress(slice.readAddress(), buyerAddress)   // response address
+      expect(slice.readUintNumber(1)).toEqual(0)
+      const forward = slice.readCoins() // forward amount
+      assert(forward.gte(toNano('0.03')))
+    }
+  })
+
+  it('should bounce unknown jettons', async () => {
+    const buyerAddress = randomAddress();
+    let randomQueryId = 227;
+
+    let jettonAddress = randomAddress();
+    let amount = toNano(1);
+
+    const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(defaultConfig);
+    sale.contract.setBalance(toNano(1));
+
+
+    let forwardJettonPayload = beginCell()
+      .storeUint(0x7362d09c, 32)
+      .storeUint(++randomQueryId, 64)
+      .storeCoins(amount)
+      .storeAddress(buyerAddress)
+      .endCell();
+    let res = await sale.contract.sendInternalMessage(
+      new InternalMessage({
+        to: sale.address,
+        from: jettonAddress,
+        value: toNano(1),
+        bounce: false,
+        body: new CommonMessageInfo({
+          body: new CellMessage(forwardJettonPayload),
+        })
+      })
+    );
+
+    expect(res.exit_code).toEqual(0);
+    expect(res.actionList.length).toEqual(1);
+
+
+    // Owner revenue
+    {
+      assert(res.actionList[0].type === 'send_msg');
+      expect(res.actionList[0].mode).toEqual(64);
+      assertAddress(res.actionList[0].message.info.dest, jettonAddress);
+      const slice = res.actionList[0].message.body.beginParse();
+      assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
+      expect(slice.readUintNumber(64)).toEqual(randomQueryId); // query_id
+      assertCoins(slice.readCoins(), amount); // amount
+      assertAddress(slice.readAddress(), buyerAddress); // address
+      assertAddress(slice.readAddress(), buyerAddress); // response address
+      expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
+      assertCoins(slice.readCoins(), toNano(0)); // forward amount
+    }
+  })
+
+  it('should bounce if smaller amount', async () => {
+    const buyerAddress = randomAddress();
+    let randomQueryId = 227;
+
+    let [jettonAddress, prices] = [...jettons.entries()][0];
+
+    const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(defaultConfig);
+    sale.contract.setBalance(toNano(1));
+
+
+    let forwardJettonPayload = beginCell()
+      .storeUint(0x7362d09c, 32)
+      .storeUint(++randomQueryId, 64)
+      .storeCoins(prices.fullPrice.divRound(new BN(2)))
+      .storeAddress(buyerAddress)
+      .endCell();
+    let res = await sale.contract.sendInternalMessage(
+      new InternalMessage({
+        to: sale.address,
+        from: jettonAddress,
+        value: toNano(1),
+        bounce: false,
+        body: new CommonMessageInfo({
+          body: new CellMessage(forwardJettonPayload),
+        })
+      })
+    );
+
+    expect(res.exit_code).toEqual(0);
+    expect(res.actionList.length).toEqual(1);
+
+
+    // Owner revenue
+    {
+      assert(res.actionList[0].type === 'send_msg');
+      expect(res.actionList[0].mode).toEqual(64);
+      assertAddress(res.actionList[0].message.info.dest, jettonAddress);
+      const slice = res.actionList[0].message.body.beginParse();
+      assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
+      expect(slice.readUintNumber(64)).toEqual(randomQueryId); // query_id
+      assertCoins(slice.readCoins(), prices.fullPrice.divRound(new BN(2))); // amount
+      assertAddress(slice.readAddress(), buyerAddress); // address
+      assertAddress(slice.readAddress(), buyerAddress); // response address
+      expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
+      assertCoins(slice.readCoins(), toNano(0)); // forward amount
+    }
+  })
 
   it('should allow cancel after buy', async () => {
     const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(defaultConfig)
