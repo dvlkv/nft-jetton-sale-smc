@@ -326,6 +326,47 @@ _ load_jetton_prices(slice prices_slice) inline {
         return ();
     }
 
+    ;; handle buy with jettons
+    if (op == jetton::transfer_notification()) {
+        var (wc, addr_hash) = parse_std_addr(sender_address);
+        
+        ;; check workchain
+        throw_unless(452, wc == 0);
+
+        ;; load amount
+        var jetton_amount = in_msg_body~load_coins();
+        var buyer_address = in_msg_body~load_msg_addr();
+
+        ;; check jetton address
+        var (price_slice, found?) = jettons_dict.udict_get?(256, addr_hash);
+        
+        ;; return jettons back if complete or if not allowed jetton
+        if (is_complete | (~ found?)) {
+            send_jettons(sender_address, query_id, buyer_address, jetton_amount, buyer_address, -1);
+            return ();
+        }
+
+        buy_with_jettons(
+            created_at,
+            marketplace_address,
+            nft_address,
+            nft_owner_address,
+            full_price,
+            fees_cell,
+            jettons_dict,
+
+            my_balance,
+            msg_value,
+            sender_address,
+            buyer_address,
+            jetton_amount,
+            price_slice,
+            query_id
+        );
+        
+        return ();
+    }
+
     ;; Throw if sale is complete
     throw_if(404, is_complete == 1);
 
@@ -392,40 +433,6 @@ _ load_jetton_prices(slice prices_slice) inline {
             sender_address,
             query_id
         );
-        return ();
-    }
-
-    if (op == jetton::transfer_notification()) {
-        var (wc, addr_hash) = parse_std_addr(sender_address);
-        
-        ;; check workchain
-        throw_unless(452, wc == 0);
-
-        ;; check jetton address
-        var (price_slice, found?) = jettons_dict.udict_get?(256, addr_hash);
-        throw_unless(453, found?);
-
-        var jetton_amount = in_msg_body~load_coins();
-        var buyer_address = in_msg_body~load_msg_addr();
-
-        buy_with_jettons(
-            created_at,
-            marketplace_address,
-            nft_address,
-            nft_owner_address,
-            full_price,
-            fees_cell,
-            jettons_dict,
-
-            my_balance,
-            msg_value,
-            sender_address,
-            buyer_address,
-            jetton_amount,
-            price_slice,
-            query_id
-        );
-        
         return ();
     }
 
