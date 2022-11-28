@@ -1,5 +1,5 @@
 import { Address, beginCell, Builder, Cell, CellMessage, CommonMessageInfo, ExternalMessage, InternalMessage, serializeDict, toNano } from 'ton'
-import { buildJettonPricesDict, NftJettonFixpriceSaleV1Data } from './NftJettonFixpriceSaleV1.data'
+import { buildJettonPricesDict, NftJettonFixpriceSaleV1Data, OperationCodes } from './NftJettonFixpriceSaleV1.data'
 import { NftJettonFixpriceSaleV1Local } from './NftJettonFixpriceSaleV1Local'
 import BN from 'bn.js'
 import { randomAddress } from "./utils/randomAddress";
@@ -42,6 +42,7 @@ const defaultConfig: NftJettonFixpriceSaleV1Data = {
   marketplaceFeeAddress: randomAddress(),
   royaltyAmount: toNano('0.04'),
   royaltyAddress: randomAddress(),
+  jettonsConfigured: true,
   jettonPrices: jettons,
 }
 
@@ -79,12 +80,14 @@ describe('fix price jetton sell contract v1', () => {
     const conf: NftJettonFixpriceSaleV1Data = {
       ...defaultConfig,
       nftOwnerAddress: null,
+      jettonPrices: null,
+      jettonsConfigured: false
     }
     const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(conf)
 
 
     const deployPayload = beginCell()
-                  .storeUint(0, 32)
+                  .storeUint(OperationCodes.Deploy, 32)
                   .storeUint(0, 64)
                   .storeRefMaybe(buildJettonPricesDict(jettons))
                   .endCell()
@@ -221,6 +224,40 @@ describe('fix price jetton sell contract v1', () => {
     expect(data.nftOwnerAddress?.toFriendly()).toEqual(prevOwner.toFriendly())
   })
 
+  it.each([
+    [{
+      ...defaultConfig,
+      jettonsConfigured: false,
+      jettonPrices: null,
+    }],
+    [{
+      ...defaultConfig,
+      jettonsConfigured: false,
+      jettonPrices: null,
+      nftOwnerAddress: null,
+    }],
+    [{
+      ...defaultConfig,
+      nftOwnerAddress: null,
+    }]
+  ])('should not buy if not initialized', async (config: NftJettonFixpriceSaleV1Data) => {
+    const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(config)
+    const buyerAddress = randomAddress()
+    const res = await sale.contract.sendInternalMessage(
+      new InternalMessage({
+        to: sale.address,
+        from: buyerAddress,
+        value: toNano(2),
+        bounce: false,
+        body: new CommonMessageInfo({
+          body: new CellMessage(new Cell()),
+        }),
+      })
+    )
+
+    expect(res.exit_code).not.toEqual(0)
+  })
+
   it('should accept coins for op=1', async () => {
     const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(defaultConfig)
 
@@ -315,6 +352,91 @@ describe('fix price jetton sell contract v1', () => {
 
   it('should buy nft by TONs', async () => {
     const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(defaultConfig)
+    const buyerAddress = randomAddress()
+    const res = await sale.contract.sendInternalMessage(
+      new InternalMessage({
+        to: sale.address,
+        from: buyerAddress,
+        value: toNano(2),
+        bounce: false,
+        body: new CommonMessageInfo({
+          body: new CellMessage(new Cell()),
+        }),
+      })
+    )
+    if (res.logs) {
+      throw new Error(res.logs)
+    }
+    expect(res.exit_code).toEqual(0)
+
+    const data = await sale.getSaleData()
+    expect(data.isComplete).toEqual(true)
+    const nftTransfer = res.actionList.find(tx => {
+      if (tx.type === 'send_msg') {
+        if (tx.message.info.type === 'internal') {
+          if (tx.message.info.dest?.toFriendly() === defaultConfig.nftAddress.toFriendly()) {
+            const slice = tx.message.body.beginParse()
+            const op = slice.readUint(32)
+            slice.readUint(64) // query_id
+            const newOwner = slice.readAddress()
+            slice.readAddress() // response address
+            slice.readUint(1) // custom payload = 0
+            const forward = slice.readCoins() // forward amount
+            if (op.eq(new BN(0x5fcc3d14)) && newOwner?.equals(buyerAddress) && forward.gte(toNano('0.03'))) {
+              return true
+            }
+            return false
+          }
+        }
+      }
+    })
+
+    expect(nftTransfer).toBeTruthy()
+
+    const royaltiesFee = res.actionList.find(tx => {
+      if (tx.type === 'send_msg') {
+        if (tx.message.info.type === 'internal') {
+          if (tx.message.info.dest?.toFriendly() === defaultConfig.royaltyAddress.toFriendly()) {
+            return tx.message.info.value.coins.gte(defaultConfig.royaltyAmount)
+          }
+        }
+      }
+    })
+
+    expect(royaltiesFee).toBeTruthy()
+
+    const marketplaceFee = res.actionList.find(tx => {
+      if (tx.type === 'send_msg') {
+        if (tx.message.info.type === 'internal') {
+          if (tx.message.info.dest?.toFriendly() === defaultConfig.marketplaceFeeAddress.toFriendly()) {
+            return tx.message.info.value.coins.gte(defaultConfig.marketplaceFee)
+          }
+        }
+      }
+    })
+
+    expect(marketplaceFee).toBeTruthy()
+
+    const ownerTransfer = res.actionList.find(tx => {
+      if (tx.type === 'send_msg') {
+        if (tx.message.info.type === 'internal') {
+          if (tx.message.info.dest?.toFriendly() === defaultConfig.nftOwnerAddress?.toFriendly()) {
+            return tx.message.info.value.coins.gte(
+              toNano(2).sub(defaultConfig.marketplaceFee).sub(defaultConfig.royaltyAmount).sub(toNano(1))
+            )
+          }
+        }
+      }
+    })
+
+    expect(ownerTransfer).toBeTruthy()
+  })
+
+  it('should buy nft by TONs without jettons', async () => {
+    const sale = await NftJettonFixpriceSaleV1Local.createFromConfig({
+      ...defaultConfig,
+      jettonPrices: null
+    })
     const buyerAddress = randomAddress()
     const res = await sale.contract.sendInternalMessage(
       new InternalMessage({
@@ -587,16 +709,29 @@ describe('fix price jetton sell contract v1', () => {
     }
   })
 
-  it('should bounce jettons if not initialized', async () => {
+  it.each([
+    [{
+      ...defaultConfig,
+      jettonsConfigured: false,
+      jettonPrices: null,
+    }],
+    [{
+      ...defaultConfig,
+      jettonsConfigured: false,
+      jettonPrices: null,
+      nftOwnerAddress: null,
+    }],
+    [{
+      ...defaultConfig,
+      nftOwnerAddress: null,
+    }]
+  ])('should bounce jettons if not initialized', async (config: NftJettonFixpriceSaleV1Data) => {
     const buyerAddress = randomAddress();
     let randomQueryId = 227;
 
     let [jettonAddress, prices] = [...jettons.entries()][0];
 
-    const sale = await NftJettonFixpriceSaleV1Local.createFromConfig({
-      ...defaultConfig,
-      nftOwnerAddress: null, 
-    });
+    const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(config)
 
 
     let forwardJettonPayload = beginCell()

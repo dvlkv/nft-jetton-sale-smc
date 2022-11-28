@@ -13,7 +13,7 @@ export type NftJettonFixpriceSaleV1Data = {
   marketplaceFee: BN
   royaltyAddress: Address
   royaltyAmount: BN
-  canDeployByExternal?: boolean,
+  jettonsConfigured?: boolean,
   jettonPrices: Map<Address, { fullPrice: BN, marketplaceFee: BN, royaltyAmount: BN }> | null
 }
 
@@ -45,6 +45,8 @@ export function buildNftJettonFixpriceSaleV1DataCell(data: NftJettonFixpriceSale
   dataCell.bits.writeAddress(data.nftOwnerAddress)
   dataCell.bits.writeCoins(data.fullPrice)
   dataCell.refs.push(feesCell)
+
+  dataCell.bits.writeBit(data.jettonsConfigured || false) // jettons configured
   if (data.jettonPrices && data.jettonPrices.size > 0) {
     dataCell.bits.writeBit(true)
     dataCell.refs.push(buildJettonPricesDict(data.jettonPrices))
@@ -64,6 +66,7 @@ export function buildNftJettonFixpriceSaleV1StateInit(
     // Nft owner address would be set by NFT itself by ownership_assigned callback
     nftOwnerAddress: null,
     isComplete: false,
+    jettonsConfigured: false,
     jettonPrices: null,
   })
 
@@ -87,6 +90,7 @@ export const OperationCodes = {
   AcceptCoins: 1,
   Buy: 2,
   CancelSale: 3,
+  Deploy: 0x0822d8ae,
 }
 
 export const Queries = {

@@ -5,6 +5,7 @@ int op::get_static_data() asm "0x2fcb26a2 PUSHINT";
 int op::report_static_data() asm "0x8b771735 PUSHINT";
 int op::get_royalty_params() asm "0x693d3950 PUSHINT";
 int op::report_royalty_params() asm "0xa8cb00ad PUSHINT";
+int op::deploy() asm "0x0822d8ae PUSHINT"; 
 
 ;; NFTEditable
 int op::edit_content() asm "0x1a0b9d51 PUSHINT";

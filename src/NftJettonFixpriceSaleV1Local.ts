@@ -6,7 +6,11 @@ import { NftJettonFixPriceSaleSourceV1 } from './NftJettonFixpriceSaleV1.source'
 import { compileFunc } from "./utils/compileFunc";
 
 
-export function loadJettonPricesDict(dict: Cell): Map<Address, { fullPrice: BN, marketplaceFee: BN, royaltyAmount: BN }> {
+export function loadJettonPricesDict(dict: Cell | null): Map<Address, { fullPrice: BN, marketplaceFee: BN, royaltyAmount: BN }> {
+  if (!dict) {
+    return new Map();
+  }
+  
   // Transform jetton address to only hash
   let jettonPricesDict = parseDict(dict.beginParse(), 256, (prices) => {
     return {
@@ -44,7 +48,7 @@ export class NftJettonFixpriceSaleV1Local {
       marketplaceFee,
       royaltyAddressSlice,
       royaltyAmount,
-    ] = res.result as [BN, BN, BN, Slice, Slice, Slice, BN, Cell, Slice, BN, Slice, BN]
+    ] = res.result as [BN, BN, BN, Slice, Slice, Slice, BN, Cell | null, Slice, BN, Slice, BN]
 
     if (saleType.toNumber() !== 0x4649584A) {
       throw new Error(`Unknown sale type: ${saleType.toString()}`)

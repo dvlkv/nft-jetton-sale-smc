@@ -17,6 +17,7 @@ _ load_data() inline {
         ds~load_msg_addr(), ;; nft_owner_address
         ds~load_coins(),    ;; full_price
         ds~load_ref(),      ;; fees_cell
+        ds~load_int(1),     ;; jettons_configured
         ds~load_dict()      ;; jettons_dict
     );
 }
@@ -39,7 +40,7 @@ _ load_jetton_prices(slice prices_slice) inline {
     );
 }
 
-() save_data(int is_complete, int created_at, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell, cell jettons_dict) impure inline {
+() save_data(int is_complete, int created_at, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell, int jettons_configured, cell jettons_dict) impure inline {
     set_data(
         begin_cell()
             .store_int(is_complete, 1)
@@ -49,6 +50,7 @@ _ load_jetton_prices(slice prices_slice) inline {
             .store_slice(nft_owner_address)
             .store_coins(full_price)
             .store_ref(fees_cell)
+            .store_int(jettons_configured, 1)
             .store_dict(jettons_dict) ;; jettons_dict
             .end_cell()
     );
@@ -177,6 +179,7 @@ _ load_jetton_prices(slice prices_slice) inline {
         nft_owner_address,
         full_price,
         fees_cell,
+        true,
         jettons_dict
     );
 }
@@ -248,6 +251,7 @@ _ load_jetton_prices(slice prices_slice) inline {
         nft_owner_address,
         full_price,
         fees_cell,
+        true,
         jettons_dict
     );
 }
@@ -270,6 +274,7 @@ _ load_jetton_prices(slice prices_slice) inline {
         nft_owner_address,
         full_price,
         fees_cell,
+        jettons_configured,
         jettons_dict
     ) = load_data();
 
@@ -309,6 +314,7 @@ _ load_jetton_prices(slice prices_slice) inline {
             nft_owner_address,
             full_price,
             fees_cell,
+            jettons_configured,
             jettons_dict
         );
         return ();
@@ -323,7 +329,7 @@ _ load_jetton_prices(slice prices_slice) inline {
         return ();
     }
 
-    var is_initialized = (nft_owner_address.slice_bits() > 2) & (~ dict_empty?(jettons_dict)); ;; not initialized if null address or jettons_dict is null
+    var is_initialized = (nft_owner_address.slice_bits() > 2) & jettons_configured; ;; not initialized if null address or jettons are not configured
 
     ;; handle buy with jettons
     if (op == jetton::transfer_notification()) {
@@ -371,8 +377,12 @@ _ load_jetton_prices(slice prices_slice) inline {
 
     ifnot (is_initialized) {
 
-        if (equal_slices(sender_address, marketplace_address)) {
-            var new_jettons_dict = in_msg_body~load_ref();
+        if (equal_slices(sender_address, marketplace_address) & (op == op::deploy())) {
+            if (jettons_configured) {
+                return (); ;; just accept coins 
+            }
+
+            var new_jettons_dict = in_msg_body~load_dict();
             save_data(
                 is_complete,
                 created_at,
@@ -381,9 +391,10 @@ _ load_jetton_prices(slice prices_slice) inline {
                 nft_owner_address,
                 full_price,
                 fees_cell,
+                true, ;; set jettons configured 
                 new_jettons_dict
             );
-            return (); ;; just accept coins on deploy
+            return ();
         }
 
         throw_unless(500, equal_slices(sender_address, nft_address));
@@ -398,6 +409,7 @@ _ load_jetton_prices(slice prices_slice) inline {
             prev_owner_address,
             full_price,
             fees_cell,
+            jettons_configured,
             jettons_dict
         );
 
@@ -438,6 +450,7 @@ _ load_jetton_prices(slice prices_slice) inline {
         nft_owner_address,
         full_price,
         fees_cell,
+        jettons_configured,
         jettons_dict
     ) = load_data();
 
