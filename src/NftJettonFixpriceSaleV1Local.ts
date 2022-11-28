@@ -46,7 +46,7 @@ export class NftJettonFixpriceSaleV1Local {
       royaltyAmount,
     ] = res.result as [BN, BN, BN, Slice, Slice, Slice, BN, Cell, Slice, BN, Slice, BN]
 
-    if (saleType.toNumber() !== 0x46495850) {
+    if (saleType.toNumber() !== 0x4649584A) {
       throw new Error(`Unknown sale type: ${saleType.toString()}`)
     }
 

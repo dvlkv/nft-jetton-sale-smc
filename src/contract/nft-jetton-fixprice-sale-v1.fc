@@ -329,6 +329,8 @@ _ load_jetton_prices(slice prices_slice) inline {
         return ();
     }
 
+    var is_initialized = nft_owner_address.slice_bits() > 2; ;; not initialized if null address
+
     ;; handle buy with jettons
     if (op == jetton::transfer_notification()) {
         var (wc, addr_hash) = parse_std_addr(sender_address);
@@ -343,8 +345,8 @@ _ load_jetton_prices(slice prices_slice) inline {
         ;; check jetton address
         var (price_slice, found?) = jettons_dict.udict_get?(256, addr_hash);
         
-        ;; return jettons back if complete or if not allowed jetton
-        if (is_complete | (~ found?)) {
+        ;; return jettons back if complete or if not allowed jetton or not initialized
+        if (is_complete | (~ found?) | (~ is_initialized)) {
             send_jettons(sender_address, query_id, buyer_address, jetton_amount, buyer_address, -1);
             return ();
         }
@@ -372,8 +374,6 @@ _ load_jetton_prices(slice prices_slice) inline {
 
     ;; Throw if sale is complete
     throw_if(404, is_complete == 1);
-
-    var is_initialized = nft_owner_address.slice_bits() > 2; ;; not initialized if null address
 
     if (~ is_initialized) {
 
@@ -493,7 +493,7 @@ _ load_jetton_prices(slice prices_slice) inline {
     ) = load_fees(fees_cell);
 
     return (
-        0x46495850,    ;; fix price sale ("FIXP")
+        0x4649584A,    ;; fix price sale ("FIXJ")
         is_complete == 1,
         created_at,
         marketplace_address,

@@ -580,6 +580,56 @@ describe('fix price jetton sell contract v1', () => {
     }
   })
 
+  it('should bounce jettons if not initialized', async () => {
+    const buyerAddress = randomAddress();
+    let randomQueryId = 227;
+
+    let [jettonAddress, prices] = [...jettons.entries()][0];
+
+    const sale = await NftJettonFixpriceSaleV1Local.createFromConfig({
+      ...defaultConfig,
+      nftOwnerAddress: null, 
+    });
+
+
+    let forwardJettonPayload = beginCell()
+      .storeUint(0x7362d09c, 32)
+      .storeUint(++randomQueryId, 64)
+      .storeCoins(prices.fullPrice)
+      .storeAddress(buyerAddress)
+      .endCell();
+    let res = await sale.contract.sendInternalMessage(
+      new InternalMessage({
+        to: sale.address,
+        from: jettonAddress,
+        value: toNano(1),
+        bounce: false,
+        body: new CommonMessageInfo({
+          body: new CellMessage(forwardJettonPayload),
+        })
+      })
+    );
+
+    expect(res.exit_code).toEqual(0);
+    expect(res.actionList.length).toEqual(1);
+
+    {
+      assert(res.actionList[0].type === 'send_msg');
+      assert(res.actionList[0].message.info.type === 'internal')
+      assertCoins(res.actionList[0].message.info.value.coins, toNano(0))
+      expect(res.actionList[0].mode).toEqual(64);
+      assertAddress(res.actionList[0].message.info.dest, jettonAddress);
+      const slice = res.actionList[0].message.body.beginParse();
+      assertCoins(slice.readUint(32), new BN(0xf8a7ea5)); // op
+      expect(slice.readUintNumber(64)).toEqual(randomQueryId); // query_id
+      assertCoins(slice.readCoins(), prices.fullPrice); // amount
+      assertAddress(slice.readAddress(), buyerAddress); // address
+      assertAddress(slice.readAddress(), buyerAddress); // response address
+      expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
+      assertCoins(slice.readCoins(), toNano(0)); // forward amount
+    }
+  })
+
   it('should forward TONs from balance to owner', async () => {
     const buyerAddress = randomAddress();
     let randomQueryId = 227;
