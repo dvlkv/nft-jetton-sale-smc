@@ -82,6 +82,13 @@ describe('fix price jetton sell contract v1', () => {
     }
     const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(conf)
 
+
+    const deployPayload = beginCell()
+                  .storeUint(0, 32)
+                  .storeUint(0, 64)
+                  .storeRefMaybe(buildJettonPricesDict(jettons))
+                  .endCell()
+
     let res = await sale.contract.sendInternalMessage(
       new InternalMessage({
         to: sale.address,
@@ -89,7 +96,7 @@ describe('fix price jetton sell contract v1', () => {
         value: toNano(1),
         bounce: false,
         body: new CommonMessageInfo({
-          body: new CellMessage(new Cell()),
+          body: new CellMessage(deployPayload),
         }),
       })
     )
@@ -1010,39 +1017,6 @@ describe('fix price jetton sell contract v1', () => {
     })
 
     expect(nftTransfer).toBeTruthy()
-  })
-
-  it('should deploy by external', async () => {
-    const sale = await NftJettonFixpriceSaleV1Local.createFromConfig({
-      ...defaultConfig,
-      canDeployByExternal: true,
-    })
-
-    let res = await sale.contract.sendExternalMessage(
-      new ExternalMessage({
-        to: sale.address,
-        body: new CommonMessageInfo({
-          body: new CellMessage(new Cell()),
-        }),
-      })
-    )
-    if (res.logs) {
-      throw new Error(res.logs)
-    }
-    expect(res.exit_code).toBe(0)
-
-    res = await sale.contract.sendExternalMessage(
-      new ExternalMessage({
-        to: sale.address,
-        body: new CommonMessageInfo({
-          body: new CellMessage(new Cell()),
-        }),
-      })
-    )
-    if (res.logs) {
-      throw new Error(res.logs)
-    }
-    expect(res.exit_code).not.toBe(0)
   })
 
   it('should allow emergency transfer after end', async () => {

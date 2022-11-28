@@ -14,7 +14,7 @@ export type NftJettonFixpriceSaleV1Data = {
   royaltyAddress: Address
   royaltyAmount: BN
   canDeployByExternal?: boolean,
-  jettonPrices: Map<Address, { fullPrice: BN, marketplaceFee: BN, royaltyAmount: BN }>
+  jettonPrices: Map<Address, { fullPrice: BN, marketplaceFee: BN, royaltyAmount: BN }> | null
 }
 
 export function buildJettonPricesDict(jettons: Map<Address, { fullPrice: BN, marketplaceFee: BN, royaltyAmount: BN }>) {
@@ -38,15 +38,14 @@ export function buildNftJettonFixpriceSaleV1DataCell(data: NftJettonFixpriceSale
 
   const dataCell = new Cell()
 
-  dataCell.bits.writeUint(data.isComplete ? 1 : 0, 1)
+  dataCell.bits.writeBit(data.isComplete)
   dataCell.bits.writeUint(data.createdAt, 32)
   dataCell.bits.writeAddress(data.marketplaceAddress)
   dataCell.bits.writeAddress(data.nftAddress)
   dataCell.bits.writeAddress(data.nftOwnerAddress)
   dataCell.bits.writeCoins(data.fullPrice)
   dataCell.refs.push(feesCell)
-  dataCell.bits.writeUint(data.canDeployByExternal ? 1 : 0, 1) // can_deploy_by_external
-  if (data.jettonPrices.size > 0) {
+  if (data.jettonPrices && data.jettonPrices.size > 0) {
     dataCell.bits.writeBit(true)
     dataCell.refs.push(buildJettonPricesDict(data.jettonPrices))
   } else {
@@ -65,6 +64,7 @@ export function buildNftJettonFixpriceSaleV1StateInit(
     // Nft owner address would be set by NFT itself by ownership_assigned callback
     nftOwnerAddress: null,
     isComplete: false,
+    jettonPrices: null,
   })
 
   const stateInit = new StateInit({

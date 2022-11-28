@@ -12,5 +12,7 @@ Contract will try to return it back, forwarding the rest of gas to sender, if:
 - the user sends unknown jetton
 - the user tries to send any jetton after completion
 - the user sends amount lower than `full_price`
+- the user forwards TONs lower than `min_gas_amount`
+- the contract is not initialized
 
 Contract will return the rest of jetton amount if it is larger than `full_price`.
