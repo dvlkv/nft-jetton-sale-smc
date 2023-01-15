@@ -47,6 +47,7 @@ const defaultConfig: NftJettonFixpriceSaleV1Data = {
 }
 
 describe('fix price jetton sell contract v1', () => {
+  jest.setTimeout(60000);
 
   it('should return sale info', async () => {
     const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(defaultConfig)
@@ -540,11 +541,14 @@ describe('fix price jetton sell contract v1', () => {
   });
 
   it('should buy only for allowed jettons', async () => {
+
     const buyerAddress = randomAddress();
     let randomQueryId = 227;
 
     for (let [jettonAddress, prices] of jettons) {
       const sale = await NftJettonFixpriceSaleV1Local.createFromConfig(defaultConfig);
+
+      sale.contract.setBalance(toNano(228));
 
       let forwardJettonPayload = beginCell()
         .storeUint(0x7362d09c, 32)
@@ -571,7 +575,7 @@ describe('fix price jetton sell contract v1', () => {
       {
         assert(res.actionList[0].type === 'send_msg');
         assert(res.actionList[0].message.info.type === 'internal')
-        assertCoins(res.actionList[0].message.info.value.coins, toNano(0.04))
+        assertCoins(res.actionList[0].message.info.value.coins, toNano(228.04))
         expect(res.actionList[0].mode).toEqual(1);
         assertAddress(res.actionList[0].message.info.dest, jettonAddress);
         const slice = res.actionList[0].message.body.beginParse();
@@ -581,7 +585,7 @@ describe('fix price jetton sell contract v1', () => {
         assertAddress(slice.readAddress(), defaultConfig.nftOwnerAddress!); // address
         assertAddress(slice.readAddress(), buyerAddress); // response address
         expect(slice.readUintNumber(1)).toEqual(0); // custom payload = 0
-        assertCoins(slice.readCoins(), toNano(0)); // forward amount
+        assertCoins(slice.readCoins(), toNano(228)); // forward amount
       }
 
 

@@ -87,7 +87,7 @@ _ load_jetton_prices(slice prices_slice) inline {
     var msg = begin_cell()
         .store_uint(0x10, 6) ;; nobounce
         .store_slice(jetton_wallet)
-        .store_coins(should_carry_gas ? 0 : 40000000) ;; 0.04 TON or zero
+        .store_coins(should_carry_gas ? 0 : (40000000 + fwd_amount)) ;; 0.04 TON or zero
         .store_uint(1, 1 + 4 + 4 + 64 + 32 + 1 + 1)
         .store_ref(msg_payload)
         .end_cell();
