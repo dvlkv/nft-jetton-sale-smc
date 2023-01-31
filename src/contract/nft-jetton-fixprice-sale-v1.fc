@@ -82,6 +82,7 @@ _ load_jetton_prices(slice prices_slice) inline {
         .store_slice(response_address)
         .store_int(0, 1)
         .store_coins(fwd_amount)
+        .store_uint(0, 1)
         .end_cell();
 
     var msg = begin_cell()
